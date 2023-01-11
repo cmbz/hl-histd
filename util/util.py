@@ -81,7 +81,11 @@ def osf_get_project_files(project_id, username, password, token):
     """
     Get metadata about all files for this OSF project.
 
-    Note: This function makes many OSF API calls and may take a long time to run.
+    Caution: This function makes many OSF API calls and may take a long time to run.
+    It is also does not handle multiple large folders of material, either. 
+    Use extreme caution when executing this function.
+
+    TO DO: refactor function to handle multiple top-level folders. 
 
     Parameters
     ----------
@@ -196,7 +200,6 @@ def map_csv_to_image(image_list, csv_list):
             pprint.pprint('Warning: unmatched file: {}'.format(csv_file))
     # otherwise, return results
     return results
-
 
 def iiif_to_dataframe(filename):
     """
