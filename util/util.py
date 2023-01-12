@@ -243,4 +243,120 @@ def iiif_to_dataframe(filename):
     df = pd.DataFrame.from_dict(data=resources,orient='columns')
     return df
 
+def create_digital_object_inventory(iiif_df):
+    """
+    Given a DataFrame of IIIF manifest information (retrieved from 'iiif_to_dataframe'),
+    process the metadata and return a DataFrame of information about the files
+    that can be easily compared to other file inventories.
+
+    Parameter
+    ---------
+    iiif_df : DataFrame
+        Output of call to iiif_to_dataframe
+    
+    Return
+    ------
+    DataFrame
+    """
+    # check for empty dataframe
+    if (iiif_df.empty == True):
+        return pd.DataFrame()
+
+    # create a copy
+    df = iiif_df.copy(deep=True)
+    # rename columns appropriately
+    df.rename(columns = {'@id':'url','format':'mimetype'},errors='raise',inplace=True)
+    # create a file_type column (derived from format/mimetype)
+    df['file_type'] = ''
+    for row in df.iterrows():
+        index = row[0]
+        mimetype = row[1]['mimetype']
+        file_type = mimetype.split('/')[0]
+        df.at[index, 'file_type'] = file_type
+    return df
+
+def create_vendor_inventory(mets_df, path=None):
+    """
+    Given a DataFrame of METS information (retrieved from 'mets_to_dataframe'),
+    process the metadata and return a DataFrame of information about the files
+    that can be easily compared to other file inventories.
+
+    Parameters
+    ----------
+    mets_df : DataFrame
+        Output of call to mets_to_dataframe
+    path : str (optional)
+        Full path to directory of data files
+    
+    Return
+    ------
+    DataFrame
+    """
+    # check for empty dataframe
+    if (mets_df.empty == True):
+        return pd.DataFrame()
+    # check for path
+    filepaths = False
+    if (not (path == None)):
+        filepaths = True
+    # create a copy
+    df = mets_df.copy(deep=True)
+    # if file paths, apply them
+    if (filepaths):
+        df['filepath'] = df.apply(lambda row: path + '/' + row.mets_url, axis=1)
+    # create drs ids by removing file extension
+    # assumes that the filenames are based upon the drs id
+    splitnames = df['filename'].str.split('.')
+    drs_ids = splitnames.apply(lambda x : x[0])
+    import re
+    #drs_ids = drs_ids.apply(lambda x : re.sub(r'_\w+$', '', x))
+    drs_ids = drs_ids.apply(lambda x : re.sub(r'_.*$', '', x))
+    df['drs_id'] = drs_ids
+    df = df.drop(columns = ['@id','mets_url'])
+    # rename columns appropriately
+    df.rename(columns = {'@mimetype':'mimetype'},errors='raise',inplace=True)
+    return df
+
+def find_missing_drs_ids(do_inventory_df, vendor_inventory_df):
+    """
+    Given digital object and vendor inventories (retrieved from calls to:
+    'create_digital_object_inventory' and 'create_vendor_inventory'),
+    identify digital object DRS ids that do not appear in the vendor inventory
+
+    Parameters
+    ----------
+    do_inventory_df : DataFrame
+        Output of call to create_digital_object_inventory
+    vendor_inventory_df : DataFrame
+        Output of call to create_vendor_inventory
+    
+    Return
+    ------
+    DataFrame
+    """
+    # check for empty dataframes
+    if (do_inventory_df.empty == True):
+        return pd.DataFrame()
+    if (vendor_inventory_df.empty == True):
+        return pd.DataFrame()
+
+    # get digital object drs ids
+    do_drs_ids = do_inventory_df['drs_id']
+    df1 = pd.DataFrame(do_drs_ids)
+    # get the vendor drs ids 
+    vendor_drs_ids = vendor_inventory_df['drs_id']
+    # de-duplicate vendor drs is
+    vendor_drs_ids.drop_duplicates(inplace=True)
+    df2 = pd.DataFrame(vendor_drs_ids)
+    # find missing drs ids
+    # see: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.merge.html
+    df = df1.merge(df2, how='right')
+    # compare df and do_drs_ids
+    if (df1.equals(df) == True):
+        # return an empty dataframe
+        return pd.DataFrame()
+    # otherwise, return the missing drs ids
+    return df
+
+
 # end file
