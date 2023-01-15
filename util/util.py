@@ -308,7 +308,6 @@ def create_vendor_inventory(mets_df, path=None):
     splitnames = df['filename'].str.split('.')
     drs_ids = splitnames.apply(lambda x : x[0])
     import re
-    #drs_ids = drs_ids.apply(lambda x : re.sub(r'_\w+$', '', x))
     drs_ids = drs_ids.apply(lambda x : re.sub(r'_.*$', '', x))
     df['drs_id'] = drs_ids
     df = df.drop(columns = ['@id','mets_url'])
