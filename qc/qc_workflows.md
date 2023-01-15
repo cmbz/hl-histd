@@ -4,11 +4,11 @@ This document describes the high level workflow tasks needed to perform quality 
 
 ## Workflow
 
-### Terms
-- **Digital Object**:
-- **File Types**: 
-- **Vendor Content**: 
-- **Transcriptions**:
+### Terminology
+- **Digital Object**: TO DO
+- **File Types**: TO DO
+- **Vendor Content**: TO DO
+- **Transcriptions**: TO DO
   - (e.g., of tabular data and text annotations)
 
 ### Metadata Analysis
