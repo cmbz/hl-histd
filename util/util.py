@@ -444,6 +444,7 @@ def generate_transcription_report(transcription_df):
         raise KeyError('Missing required field in transcription DataFrame')
 
     # process data
+    # TO DO: investigate DataFrame.groupby() options for better performance
     data = {}
     for row in transcription_df.iterrows():
         index = row[0]
