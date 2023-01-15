@@ -98,7 +98,7 @@ def osf_get_project_files(project_id, username, password, token):
     token : str
         Valid OSF API key. 
         Login to OSF and create your API key here: https://osf.io/settings/tokenshttps://osf.io/settings/tokens
-
+    
     Return
     ------
     dict :
@@ -155,9 +155,8 @@ def osf_files_to_dataframe(files):
 
 def map_csv_to_image(image_list, csv_list):
     """
-     Given a list of image names and a list of csv file names, 
+     Given a list of image names (with file extension) and a list of csv file names, 
      this function deduces which csv file is related to a image file.
-
 
     Parameter
     ---------
@@ -317,46 +316,152 @@ def create_vendor_inventory(mets_df, path=None):
     df.rename(columns = {'@mimetype':'mimetype'},errors='raise',inplace=True)
     return df
 
-def find_missing_drs_ids(do_inventory_df, vendor_inventory_df):
+def find_missing_drs_ids(do_drs_ids, vendor_drs_ids):
     """
-    Given digital object and vendor inventories (retrieved from calls to:
-    'create_digital_object_inventory' and 'create_vendor_inventory'),
-    identify digital object DRS ids that do not appear in the vendor inventory
+    Given two pandas Series, one of digital object DRS ids and another of
+    vendor DRS ids, identify digital object DRS ids that do not appear 
+    in the vendor_drs_ids list
 
     Parameters
     ----------
-    do_inventory_df : DataFrame
-        Output of call to create_digital_object_inventory
-    vendor_inventory_df : DataFrame
-        Output of call to create_vendor_inventory
+    do_drs_ids : Series
+        Series of digital object DRS ids
+    vendor_drs_ids : Series
+        Series of vendor DRS ids
+
+    Raise
+    -----
+    ValueError
+        Too many distinct vendor DRS ids detected
+        Vendor DRS id/s not found in digital object
     
     Return
     ------
     DataFrame
+        List of missing DRS ids, empty if none
+
     """
-    # check for empty dataframes
-    if (do_inventory_df.empty == True):
+    # check for empty series
+    if (do_drs_ids.empty == True):
         return pd.DataFrame()
+    if (vendor_drs_ids.empty == True):
+        return pd.DataFrame()
+
+    # digital object drs ids cannot contain duplicates
+    duplicates = do_drs_ids.duplicated(keep='first')
+    if (True in duplicates.values):
+        raise ValueError('Digital object has one or more duplicate DRS ids')
+
+    # sort the values
+    do_drs_ids = do_drs_ids.sort_values(ascending=True)
+    vendor_drs_ids = vendor_drs_ids.sort_values(ascending=True)
+
+    # drop duplicates
+    v2_drs_ids = vendor_drs_ids.drop_duplicates(keep='first')
+
+    # create sets of drs ids to perform set operations
+    set1 = set(do_drs_ids.tolist())
+    set2 = set(v2_drs_ids.tolist())
+
+    # are the sets are equal?
+    if (set1 == set2):
+        return pd.DataFrame()
+
+    # values in vendor must appear in digital object
+    if (not (set2.issubset(set1))):
+        raise ValueError('Digital object does not contain one or more vendor DRS ids')
+           
+    # difference between digital object and vendor
+    diff = set1.difference(set2)
+    return pd.DataFrame(diff)
+
+def extract_transcription_inventory(vendor_inventory_df, ttype='csv', path=False):
+    """
+    Given a vendor output inventory, extract the named type of transcription files.
+    Valid types: 'csv' or 'txt'.
+
+    Parameters
+    ----------
+    vendor_inventory_df : DataFrame
+        Vendor inventory, as output from call to: `create_vendor_inventory`
+    ttype : str (default = csv)
+        Transcription type, either csv or txt
+    path : bool
+        Preserve the existence of inventory file paths, if desired
+
+    Raise
+    -----
+    ValueError 
+        Unknown transcription type
+    
+    Return
+    ------
+    DataFrame  
+    """
+    # check for empty inventory
     if (vendor_inventory_df.empty == True):
         return pd.DataFrame()
-
-    # get digital object drs ids
-    do_drs_ids = do_inventory_df['drs_id']
-    df1 = pd.DataFrame(do_drs_ids)
-    # get the vendor drs ids 
-    vendor_drs_ids = vendor_inventory_df['drs_id']
-    # de-duplicate vendor drs is
-    vendor_drs_ids.drop_duplicates(inplace=True)
-    df2 = pd.DataFrame(vendor_drs_ids)
-    # find missing drs ids
-    # see: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.merge.html
-    df = df1.merge(df2, how='right')
-    # compare df and do_drs_ids
-    if (df1.equals(df) == True):
-        # return an empty dataframe
-        return pd.DataFrame()
-    # otherwise, return the missing drs ids
+    # check for invalid transcription type
+    if (ttype not in ['csv','txt']):
+            msg = 'Unknown transcription type: {}'.format(ttype)
+            raise ValueError(msg)
+    # check for existence of path, if needed
+    if ((path == True) and 
+        not('filepath' in vendor_inventory_df.columns)):
+        raise ValueError('Inventory is missing column: filepath')
+    # get the desired transcription files
+    df = vendor_inventory_df.loc[vendor_inventory_df['file_type'] == ttype]
+    # drop filepath if desired
+    if ((path == False) and 
+        ('filepath' in vendor_inventory_df.columns)):
+        df.drop('filepath', axis=1)
     return df
 
+def generate_transcription_report(transcription_df):
+    """
+    Generated a report based upon an inventory of vendor transcription files
+
+    Parameter
+    ---------
+    transcription_df : DataFrame
+
+    Raises
+    ------
+    KeyError
+        Missing required field in transcription DataFrame
+   
+    Return
+    ------
+    DataFrame
+
+    """
+    # check for empty inventory
+    if (transcription_df.empty == True):
+        return pd.DataFrame()
+
+    # check for required fields
+    if ((not 'drs_id' in transcription_df.columns) or
+        (not 'filename' in transcription_df.columns)):
+        raise KeyError('Missing required field in transcription DataFrame')
+
+    # process data
+    data = {}
+    for row in transcription_df.iterrows():
+        index = row[0]
+        drs_id = row[1].get('drs_id')
+        filename = row[1].get('filename')
+        if (not data.get(drs_id)):
+            data[drs_id] = {}
+            data[drs_id] = {'drs_id':drs_id, 'filename':[filename], 'count':1}
+        else:
+            data[drs_id]['filename'].append(filename)
+            data[drs_id]['count'] = data[drs_id]['count'] + 1
+    # serialize filenames
+    for key in data.keys():
+        names = ';'.join(data[key].get('filename'))
+        data[key]['filename']=names
+    # generate report dataframe
+    df = pd.DataFrame.from_records(list(data.values()))
+    return df
 
 # end file
