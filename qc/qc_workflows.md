@@ -46,7 +46,7 @@ This part of the workflow focuses on analyzing metadata about source image files
   - Confirm that there is at least one vendor-provided transcription (e.g., of tabular data and text annotations) for each image in each digital object. Report missing transcriptions for later processing.
     - Note: Use the `csv` and `txt` transcription inventories
     - `# DRS ids - # transcriptions = Reported to human`
-  -   Use: TO DO
+  -   Use: `util.find_missing_transcription_drs_ids(DataFrame, DataFrame)`
   - Perform manual QC on images that do not have transcriptions.
     - TO DO
 

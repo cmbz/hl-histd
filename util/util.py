@@ -412,8 +412,8 @@ def extract_transcription_inventory(vendor_inventory_df, ttype='csv', path=False
     df = vendor_inventory_df.loc[vendor_inventory_df['file_type'] == ttype]
     # drop filepath if desired
     if ((path == False) and 
-        ('filepath' in vendor_inventory_df.columns)):
-        df.drop('filepath', axis=1)
+        ('filepath' in df.columns) == True):
+        df = df.drop('filepath', axis=1)
     return df
 
 def generate_transcription_report(transcription_df):
@@ -463,5 +463,45 @@ def generate_transcription_report(transcription_df):
     # generate report dataframe
     df = pd.DataFrame.from_records(list(data.values()))
     return df
+
+def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df):
+    """
+    Generated a report based upon an inventory of vendor transcription files
+
+    Parameter
+    ---------
+    do_inventory_df : DataFrame
+    transcription_report_df : DataFrame
+
+    Raises
+    ------
+    KeyError
+        Missing required field: drs_id in DataFrame
+   
+    Return
+    ------
+    DataFrame
+    """
+
+    # check for empty inventories
+    if (do_inventory_df.empty == True):
+        return pd.DataFrame()
+    if (transcription_report_df.empty == True):
+        return pd.DataFrame()
+
+    # check for drs_id field
+    if (not('drs_id' in do_inventory_df.columns) or
+        not('drs_id' in transcription_report_df.columns)):
+        raise KeyError('Missing required field: drs_id in DataFrame')
+
+    # merge the results on drs_id column
+    df = do_inventory_df.merge(transcription_report_df, on='drs_id',how='left')
+
+    # handle NaN values
+    df['count'] = df['count'].fillna(0)
+    df['filename'] = df['filename'].fillna('')
+
+    return df
+
 
 # end file
