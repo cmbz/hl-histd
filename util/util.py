@@ -36,6 +36,7 @@ def mets_to_dataframe(filename):
     # validate mets file
     if (not doc.get('mets')):
         return None
+
     # get the groups of files in the METS file
     file_grp = doc.get('mets').get('fileSec').get('fileGrp')
     # list of all files named in METS file
@@ -46,7 +47,10 @@ def mets_to_dataframe(filename):
         file_type = grp.get('@USE')
         # get the files in the group
         files = grp.get('file')
-        # iterate over the files in the group
+        # if there are no more files
+        if (not files):
+            break
+        # otherwise, iterate over the files in the group
         for file in files:
             # collect metadata from dictionaries, ignore other element types (e.g., str)
             if isinstance(file, dict):
@@ -501,7 +505,9 @@ def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df)
     df['count'] = df['count'].fillna(0)
     df['filename'] = df['filename'].fillna('')
 
-    return df
+    # count should be integer
+    df['count'] = df['count'].astype('int64')
 
+    return df
 
 # end file
