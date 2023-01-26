@@ -1,6 +1,5 @@
 """
 Harvard Library Historical Datasets Utility Functions Module
-
 """
 from collections import OrderedDict
 import configparser
@@ -246,39 +245,59 @@ def iiif_to_dataframe(filename):
     df = pd.DataFrame.from_dict(data=resources,orient='columns')
     return df
 
-def create_digital_object_inventory(iiif_df):
+def create_digital_object_inventory(inventory_df, itype='iiif'):
     """
-    Given a DataFrame of IIIF manifest information (retrieved from 'iiif_to_dataframe'),
+    Given a DataFrame of digital object information 
+    (either retrieved from 'iiif_to_dataframe' or 'drs_inventory_to_dataframe),
     process the metadata and return a DataFrame of information about the files
     that can be easily compared to other file inventories.
 
     Parameter
     ---------
-    iiif_df : DataFrame
-        Output of call to iiif_to_dataframe
+    inventory_df : DataFrame
+        Output of call to 'iiif_to_dataframe' or 'drs_inventory_to_dataframe'
+    itype : str
+        Type of inventory, either 'iiif' or 'drs'
+
+    Raise
+    -----
+    ValueError
+        Unknown inventory type
     
     Return
     ------
     DataFrame
     """
     # check for empty dataframe
-    if (iiif_df.empty == True):
+    if (inventory_df.empty == True):
         return pd.DataFrame()
 
+    # check for valid ttype
+    if (itype not in ['iiif','drs']):
+        msg = 'Unknown inventory type: {}'.format(itype)
+        raise ValueError(msg)
+
     # create a copy
-    df = iiif_df.copy(deep=True)
-    # rename columns appropriately
-    df.rename(columns = {'@id':'url','format':'mimetype'},errors='raise',inplace=True)
-    # create a file_type column (derived from format/mimetype)
-    df['file_type'] = ''
-    for row in df.iterrows():
-        index = row[0]
-        mimetype = row[1]['mimetype']
-        file_type = mimetype.split('/')[0]
-        df.at[index, 'file_type'] = file_type
+    df = inventory_df.copy(deep=True)
+
+    # inventory is from iiif file
+    if (itype == 'iiif'):
+        # rename columns appropriately
+        df.rename(columns = {'@id':'url','format':'mimetype'},errors='raise',inplace=True)
+        # create a file_type column (derived from format/mimetype)
+        df['file_type'] = ''
+        for row in df.iterrows():
+            index = row[0]
+            mimetype = row[1]['mimetype']
+            file_type = mimetype.split('/')[0]
+            df.at[index, 'file_type'] = file_type
+
+    # if inventory is from drs file, there is nothing to do
+    # ...
+
     return df
 
-def create_vendor_inventory(mets_df, path=None):
+def create_vendor_inventory(mets_df, drsids=True, path=None):
     """
     Given a DataFrame of METS information (retrieved from 'mets_to_dataframe'),
     process the metadata and return a DataFrame of information about the files
@@ -288,6 +307,9 @@ def create_vendor_inventory(mets_df, path=None):
     ----------
     mets_df : DataFrame
         Output of call to mets_to_dataframe
+    drsids : bool
+        Parse and output DRS ids (default, True)
+        Assumes that mets_df contains DRS ids
     path : str (optional)
         Full path to directory of data files
     
@@ -302,69 +324,83 @@ def create_vendor_inventory(mets_df, path=None):
     filepaths = False
     if (not (path == None)):
         filepaths = True
+    
     # create a copy
     df = mets_df.copy(deep=True)
+    
     # if file paths, apply them
     if (filepaths):
         df['filepath'] = df.apply(lambda row: path + '/' + row.mets_url, axis=1)
-    # create drs ids by removing file extension
-    # assumes that the filenames are based upon the drs id
-    splitnames = df['filename'].str.split('.')
-    drs_ids = splitnames.apply(lambda x : x[0])
-    import re
-    drs_ids = drs_ids.apply(lambda x : re.sub(r'_.*$', '', x))
-    df['drs_id'] = drs_ids
+    
+    # if drsids are present, process them
+    if (drsids == True):
+        # create drs ids by removing file extension
+        # assumes that the filenames are based upon the drs id
+        splitnames = df['filename'].str.split('.')
+        drs_ids = splitnames.apply(lambda x : x[0])
+        import re
+        drs_ids = drs_ids.apply(lambda x : re.sub(r'_.*$', '', x))
+        df['drs_id'] = drs_ids
+    
+    # if drsids are not present, process filename stems
+    if (drsids == False):
+        import re
+        stems = df['filename'].apply(lambda x : re.match(r'^[\d]+_[\S]+_[\d]+[_|.]', x))
+        df['filename_stem'] = stems.apply(lambda x : re.sub(r'[_|.]$', '', x[0]))
+    
+    # drop unneeded columns
     df = df.drop(columns = ['@id','mets_url'])
+    
     # rename columns appropriately
     df.rename(columns = {'@mimetype':'mimetype'},errors='raise',inplace=True)
     return df
 
-def find_missing_drs_ids(do_drs_ids, vendor_drs_ids):
+def find_missing_reference_ids(do_ref_ids, vendor_ref_ids):
     """
-    Given two pandas Series, one of digital object DRS ids and another of
-    vendor DRS ids, identify digital object DRS ids that do not appear 
-    in the vendor_drs_ids list
+    Given two pandas Series, one of digital object reference ids and another of
+    vendor reference ids, identify digital object DRS ids that do not appear 
+    in the vendor_ref_ids list
 
     Parameters
     ----------
-    do_drs_ids : Series
-        Series of digital object DRS ids
-    vendor_drs_ids : Series
-        Series of vendor DRS ids
+    do_ref_ids : Series
+        Series of digital object reference ids
+    vendor_ref_ids : Series
+        Series of vendor reference ids
 
     Raise
     -----
     ValueError
-        Too many distinct vendor DRS ids detected
-        Vendor DRS id/s not found in digital object
+        Too many distinct vendor reference ids detected
+        Vendor reference id/s not found in digital object
     
     Return
     ------
     DataFrame
-        List of missing DRS ids, empty if none
+        List of missing reference ids, empty if none
 
     """
     # check for empty series
-    if (do_drs_ids.empty == True):
+    if (do_ref_ids.empty == True):
         return pd.DataFrame()
-    if (vendor_drs_ids.empty == True):
+    if (vendor_ref_ids.empty == True):
         return pd.DataFrame()
 
-    # digital object drs ids cannot contain duplicates
-    duplicates = do_drs_ids.duplicated(keep='first')
+    # digital object ref ids cannot contain duplicates
+    duplicates = do_ref_ids.duplicated(keep='first')
     if (True in duplicates.values):
-        raise ValueError('Digital object has one or more duplicate DRS ids')
+        raise ValueError('Digital object has one or more duplicate reference ids')
 
     # sort the values
-    do_drs_ids = do_drs_ids.sort_values(ascending=True)
-    vendor_drs_ids = vendor_drs_ids.sort_values(ascending=True)
+    do_ref_ids = do_ref_ids.sort_values(ascending=True)
+    vendor_ref_ids = vendor_ref_ids.sort_values(ascending=True)
 
     # drop duplicates
-    v2_drs_ids = vendor_drs_ids.drop_duplicates(keep='first')
+    v2_ref_ids = vendor_ref_ids.drop_duplicates(keep='first')
 
-    # create sets of drs ids to perform set operations
-    set1 = set(do_drs_ids.tolist())
-    set2 = set(v2_drs_ids.tolist())
+    # create sets of ref ids to perform set operations
+    set1 = set(do_ref_ids.tolist())
+    set2 = set(v2_ref_ids.tolist())
 
     # are the sets are equal?
     if (set1 == set2):
@@ -372,7 +408,7 @@ def find_missing_drs_ids(do_drs_ids, vendor_drs_ids):
 
     # values in vendor must appear in digital object
     if (not (set2.issubset(set1))):
-        raise ValueError('Digital object does not contain one or more vendor DRS ids')
+        raise ValueError('Digital object does not contain one or more vendor reference ids')
            
     # difference between digital object and vendor
     diff = set1.difference(set2)
@@ -420,13 +456,15 @@ def extract_transcription_inventory(vendor_inventory_df, ttype='csv', path=False
         df = df.drop('filepath', axis=1)
     return df
 
-def generate_transcription_report(transcription_df):
+def generate_transcription_report(transcription_df, drsids=True):
     """
     Generated a report based upon an inventory of vendor transcription files
 
     Parameter
     ---------
     transcription_df : DataFrame
+    drsids : bool (default = True)
+        The inventory does/not contain DRS ids
 
     Raises
     ------
@@ -443,23 +481,38 @@ def generate_transcription_report(transcription_df):
         return pd.DataFrame()
 
     # check for required fields
-    if ((not 'drs_id' in transcription_df.columns) or
-        (not 'filename' in transcription_df.columns)):
-        raise KeyError('Missing required field in transcription DataFrame')
+    if (drsids == True): 
+        if ((not 'drs_id' in transcription_df.columns) or
+            (not 'filename' in transcription_df.columns)):
+            raise KeyError('Missing required field in transcription DataFrame')
 
-    # process data
-    # TO DO: investigate DataFrame.groupby() options for better performance
-    data = {}
-    for row in transcription_df.iterrows():
-        index = row[0]
-        drs_id = row[1].get('drs_id')
-        filename = row[1].get('filename')
-        if (not data.get(drs_id)):
-            data[drs_id] = {}
-            data[drs_id] = {'drs_id':drs_id, 'filename':[filename], 'count':1}
-        else:
-            data[drs_id]['filename'].append(filename)
-            data[drs_id]['count'] = data[drs_id]['count'] + 1
+        # process data
+        # TO DO: investigate DataFrame.groupby() options for better performance
+        data = {}
+        for row in transcription_df.iterrows():
+            index = row[0]
+            drs_id = row[1].get('drs_id')
+            filename = row[1].get('filename')
+            if (not data.get(drs_id)):
+                data[drs_id] = {}
+                data[drs_id] = {'drs_id':drs_id, 'filename':[filename], 'count':1}
+            else:
+                data[drs_id]['filename'].append(filename)
+                data[drs_id]['count'] = data[drs_id]['count'] + 1
+    else:
+        # drsids = False
+        data = {}
+        for row in transcription_df.iterrows():
+            index = row[0]
+            stem = row[1].get('filename_stem')
+            filename = row[1].get('filename')
+            if (not data.get(stem)):
+                data[stem] = {}
+                data[stem] = {'filename_stem':stem, 'filename':[filename], 'count':1}
+            else:
+                data[stem]['filename'].append(filename)
+                data[stem]['count'] = data[stem]['count'] + 1
+
     # serialize filenames
     for key in data.keys():
         names = ';'.join(data[key].get('filename'))
@@ -468,7 +521,7 @@ def generate_transcription_report(transcription_df):
     df = pd.DataFrame.from_records(list(data.values()))
     return df
 
-def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df):
+def find_missing_transcription_reference_ids(do_inventory_df, transcription_report_df, reftype='drs'):
     """
     Generated a report based upon an inventory of vendor transcription files
 
@@ -476,11 +529,16 @@ def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df)
     ---------
     do_inventory_df : DataFrame
     transcription_report_df : DataFrame
+    reftype : str (default: drs)
+        Either 'drs' or 'stem' (filename stem)
 
     Raises
     ------
+    ValueError
+        Invalid reference type
     KeyError
         Missing required field: drs_id in DataFrame
+        Missing required field: filename_stem in DataFrame
    
     Return
     ------
@@ -493,13 +551,31 @@ def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df)
     if (transcription_report_df.empty == True):
         return pd.DataFrame()
 
+    # check for valid reftype
+    if (not reftype in ['drs','stem']):
+        raise KeyError('Invalid reference type')
+
+    # reference id
+    refid = None
+
     # check for drs_id field
-    if (not('drs_id' in do_inventory_df.columns) or
-        not('drs_id' in transcription_report_df.columns)):
-        raise KeyError('Missing required field: drs_id in DataFrame')
+    if (reftype == 'drs'):
+        if (not('drs_id' in do_inventory_df.columns) or
+            not('drs_id' in transcription_report_df.columns)):
+            raise KeyError('Missing required field: drs_id in DataFrame')
+        else:
+            refid = 'drs_id'
+
+    # check for filename_stem field
+    if (reftype == 'stem'):
+        if (not('filename_stem' in do_inventory_df.columns) or
+            not('filename_stem' in transcription_report_df.columns)):
+            raise KeyError('Missing required field: filename_stem in DataFrame')
+        else:
+            refid = 'filename_stem'
 
     # merge the results on drs_id column
-    df = do_inventory_df.merge(transcription_report_df, on='drs_id',how='left')
+    df = do_inventory_df.merge(transcription_report_df, on=refid, how='left')
 
     # handle NaN values
     df['count'] = df['count'].fillna(0)
@@ -509,5 +585,72 @@ def find_missing_transcription_drs_ids(do_inventory_df, transcription_report_df)
     df['count'] = df['count'].astype('int64')
 
     return df
+
+def drs_inventory_to_dataframe(filename):
+    """
+    Read and extract information about files from DRS inventory file.
+
+    Parameter
+    ---------
+    drs_inventory : str
+        Full path to DRS inventory filename 
+   
+    Return
+    ------
+    DataFrame
+    """
+    if (not filename):
+        return None
+
+    # columns to use
+    cols = ['file_huldrsadmin_ownerSuppliedName_string',
+            'file_mets_mimetype_string',
+            'file_huldrsadmin_uri_string_sort']
+
+    # read the inventory file
+    df = pd.read_csv(filename,delimiter=',',usecols=cols)
+
+    # rename columns
+    new_names = {'file_huldrsadmin_ownerSuppliedName_string':'filename_stem',
+                'file_mets_mimetype_string':'mimetype',
+                'file_huldrsadmin_uri_string_sort':'url'}
+    df.rename(columns=new_names,inplace=True)
+    df['url'] = df.apply(lambda row: 'https://nrs.harvard.edu/' + row.url, axis=1)
+
+    return df
+
+def get_file_info(path):
+    """
+    Get information about all files in a directory
+
+    Parameter
+    ---------
+    path : str
+        Full path to directory
+
+    Return
+    ------
+    dict 
+        Dictionary of directory's file information
+    """
+    # check parameters
+    if (not path):
+        return {}
+
+    import os
+    # get the list of files in the path
+    files = os.listdir(path)
+    # get file info for each file
+    info = {}
+    for file in files:
+        filename = path + '/' + file
+        status = os.stat(filename)
+        info[file] = {
+            'name':file,
+            'size':status.st_size,
+            'mode':status.st_mode,
+            'ctime':status.st_ctime
+        }
+    return info
 
 # end file
