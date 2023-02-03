@@ -712,6 +712,25 @@ def map_drs_vendor_inventory(vendor_inventory_df, do_osn_inventory_df):
 
 def rename_vendor_files(vendor_osn_inventory_df):
     """
+    Rename vendor files using DRS ids in the filenames.
+    Assumes that filepaths are non-null and valid.
+
+    Parameter
+    ---------
+    vendor_osn_inventory_df : DataFrame
+        Output of 'map_drs_vendor_inventory'
+
+    Raises
+    ------
+    IsADirectoryError
+    NotADirectoryError
+    PermissionError
+    OSError
+
+    Return
+    ------
+    bool
+
     """
     # check for empty inventory
     if (vendor_osn_inventory_df.empty == True):
