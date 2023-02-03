@@ -653,4 +653,94 @@ def get_file_info(path):
         }
     return info
 
+def map_drs_vendor_inventory(vendor_inventory_df, do_osn_inventory_df):
+    """
+    Given a vendor inventory that uses DRS ids and an inventory 
+    of matching content that uses owner-supplied names, generate an
+    inventory of new names based upon owner-supplied names.
+
+    Parameters
+    ----------
+    vendor_inventory_df : DataFrame
+        Vendor inventory that uses DRS ids
+    do_osn_inventory_df : DataFrame
+        Digital object inventory that uses owner-supplied names
+
+    Return
+    ------
+    DataFrame
+    """
+    # check for empty inventories
+    if (vendor_inventory_df.empty == True):
+        return pd.DataFrame()
+    if (do_osn_inventory_df.empty == True):
+        return pd.DataFrame()
+    
+    # import regex
+    import re
+
+    # create output dataframe
+    df = vendor_inventory_df.copy(deep=True)
+    # add a column for new file name
+    df['filename_osn'] = ''
+
+    # process each row in the digital object inventory
+    for row in do_osn_inventory_df.iterrows():
+        # get the drs id
+        drsid = str(row[1].get('file_id_num'))
+        # get the owner-supplied name
+        osn = row[1].get('file_huldrsadmin_ownerSuppliedName_string')
+        # get the rows corresponding to the drsid from vendor inventory
+        matching = df.loc[df['drs_id'] == drsid]
+        # rename the file for match
+        for match in matching.iterrows():
+            index = match[0]
+            filename = match[1].get('filename')
+            chunks = re.findall('_.*$', filename)
+            # filename like: 44319541.jpg
+            if (len(chunks) == 0):
+                    tokens = filename.split('.')
+                    filename_osn = osn + '.innodata.' + tokens[1]
+                    df.at[index, 'filename_osn'] = filename_osn
+            else:
+                # filename like: 44319578_24-25_a.csv
+                tokens = chunks[0].split('.')
+                filename_osn = osn + tokens[0] + '.innodata.' + tokens[1]
+                df.at[index, 'filename_osn'] = filename_osn
+
+    return df
+
+def rename_vendor_files(vendor_osn_inventory_df):
+    """
+    """
+    # check for empty inventory
+    if (vendor_osn_inventory_df.empty == True):
+        False
+    # inventory must have certain columns
+    if (('filepath' not in vendor_osn_inventory_df.columns) or
+        ('filename_osn' not in vendor_osn_inventory_df.columns)):
+            return False
+
+    import os
+    for row in vendor_osn_inventory_df.iterrows():
+        filepath = row[1].get('filepath')
+        filename_osn = row[1].get('filename_osn')
+        tokens = filepath.split('/')
+        del tokens[-1]
+        new_filename = '/'.join(tokens) + '/' + filename_osn
+        try :
+            os.rename(filepath, new_filename)
+            print("Source path renamed to destination path successfully.")
+        except IsADirectoryError:
+            print("Source is a file but destination is a directory.")
+        except NotADirectoryError:
+            print("Source is a directory but destination is a file.")
+        except PermissionError:
+            print("Operation not permitted.")
+        except OSError as error:
+            print(error)
+
+    return True
+
+
 # end file
