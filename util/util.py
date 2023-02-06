@@ -747,6 +747,7 @@ def rename_vendor_files(vendor_osn_inventory_df):
         tokens = filepath.split('/')
         del tokens[-1]
         new_filename = '/'.join(tokens) + '/' + filename_osn
+        # source examples: https://www.geeksforgeeks.org/python-os-rename-method/ and https://docs.python.org/3/library/os.html#os.rename
         try :
             os.rename(filepath, new_filename)
             print("Source path renamed to destination path successfully.")
