@@ -2,3 +2,12 @@
 ######################
 .DS_Store
 .DS_Store?
+
+# Data files #
+##############
+*.jpg
+*.jpeg
+*.csv
+*.txt
+*.xml
+
