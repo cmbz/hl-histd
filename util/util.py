@@ -331,6 +331,8 @@ def create_vendor_inventory(mets_df, drsids=True, path=None):
     # if file paths, apply them
     if (filepaths):
         df['filepath'] = df.apply(lambda row: path + '/' + row.mets_url, axis=1)
+        # add column to df
+        df['path'] = path
     
     # if drsids are present, process them
     if (drsids == True):
@@ -683,6 +685,8 @@ def map_drs_vendor_inventory(vendor_inventory_df, do_osn_inventory_df):
     df = vendor_inventory_df.copy(deep=True)
     # add a column for new file name
     df['filename_osn'] = ''
+    # add a column for the new file's path
+    df['filepath_osn'] = ''
 
     # process each row in the digital object inventory
     for row in do_osn_inventory_df.iterrows():
@@ -702,11 +706,17 @@ def map_drs_vendor_inventory(vendor_inventory_df, do_osn_inventory_df):
                     tokens = filename.split('.')
                     filename_osn = osn + '.innodata.' + tokens[1]
                     df.at[index, 'filename_osn'] = filename_osn
+                    filepath = df.at[index, 'filepath']
+                    path = filepath.split('/' + filename)
+                    df.at[index, 'filepath_osn'] = path[0] + '/' + filename_osn
             else:
                 # filename like: 44319578_24-25_a.csv
                 tokens = chunks[0].split('.')
                 filename_osn = osn + tokens[0] + '.innodata.' + tokens[1]
                 df.at[index, 'filename_osn'] = filename_osn
+                filepath = df.at[index, 'filepath']
+                path = filepath.split('/' + filename)
+                df.at[index, 'filepath_osn'] = path[0] + '/' + filename_osn
 
     return df
 
@@ -747,6 +757,8 @@ def rename_vendor_files(vendor_osn_inventory_df):
         tokens = filepath.split('/')
         del tokens[-1]
         new_filename = '/'.join(tokens) + '/' + filename_osn
+        # add new file path
+
         try :
             os.rename(filepath, new_filename)
             print("Source path renamed to destination path successfully.")
